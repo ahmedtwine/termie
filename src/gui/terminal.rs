@@ -299,6 +299,7 @@ fn terminal_color_to_egui(default_color: &Color32, color: &TerminalColor) -> Col
             let (r, g, b) = ansi_256_to_rgb(*idx);
             Color32::from_rgb(r, g, b)
         }
+        TerminalColor::Rgb(r, g, b) => Color32::from_rgb(*r, *g, *b),
     }
 }
 

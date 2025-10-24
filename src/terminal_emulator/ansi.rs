@@ -27,7 +27,9 @@ pub enum SelectGraphicRendition {
     ForegroundBrightCyan,
     ForegroundBrightWhite,
     Foreground256(u8),
+    ForegroundRgb(u8, u8, u8),
     Background256(u8),
+    BackgroundRgb(u8, u8, u8),
     Unknown(usize),
 }
 
@@ -355,12 +357,16 @@ enum AnsiParserInner {
     Empty,
     Escape,
     Csi(CsiParser),
+    Osc,
+    OscEscape,
 }
 
 mod ansi_parser_keys {
     pub const EMPTY: &str = "empty";
     pub const ESCAPE: &str = "escape";
     pub const CSI: &str = "csi";
+    pub const OSC: &str = "osc";
+    pub const OSC_ESCAPE: &str = "osc_escape";
     pub const TYPE: &str = "type";
     pub const VAL: &str = "val";
 }
@@ -388,6 +394,8 @@ impl AnsiParser {
         let inner = match typ.as_str() {
             ansi_parser_keys::EMPTY => AnsiParserInner::Empty,
             ansi_parser_keys::ESCAPE => AnsiParserInner::Escape,
+            ansi_parser_keys::OSC => AnsiParserInner::Osc,
+            ansi_parser_keys::OSC_ESCAPE => AnsiParserInner::OscEscape,
             ansi_parser_keys::CSI => {
                 let item = root
                     .remove(ansi_parser_keys::VAL)
@@ -414,6 +422,20 @@ impl AnsiParser {
                 [(
                     ansi_parser_keys::TYPE.to_string(),
                     ansi_parser_keys::ESCAPE.into(),
+                )]
+                .into(),
+            ),
+            AnsiParserInner::Osc => SnapshotItem::Map(
+                [(
+                    ansi_parser_keys::TYPE.to_string(),
+                    ansi_parser_keys::OSC.into(),
+                )]
+                .into(),
+            ),
+            AnsiParserInner::OscEscape => SnapshotItem::Map(
+                [(
+                    ansi_parser_keys::TYPE.to_string(),
+                    ansi_parser_keys::OSC_ESCAPE.into(),
                 )]
                 .into(),
             ),
@@ -468,11 +490,28 @@ impl AnsiParser {
                         b'[' => {
                             self.inner = AnsiParserInner::Csi(CsiParser::new());
                         }
+                        b']' => {
+                            self.inner = AnsiParserInner::Osc;
+                        }
                         _ => {
                             let b_utf8 = std::char::from_u32(*b as u32);
                             warn!("Unhandled escape sequence {b_utf8:?} {b:x}");
                             self.inner = AnsiParserInner::Empty;
                         }
+                    }
+                }
+                AnsiParserInner::Osc => {
+                    if *b == 0x07 {
+                        self.inner = AnsiParserInner::Empty;
+                    } else if *b == b'\x1b' {
+                        self.inner = AnsiParserInner::OscEscape;
+                    }
+                }
+                AnsiParserInner::OscEscape => {
+                    if *b == b'\\' {
+                        self.inner = AnsiParserInner::Empty;
+                    } else {
+                        self.inner = AnsiParserInner::Osc;
                     }
                 }
                 AnsiParserInner::Csi(parser) => {
@@ -660,12 +699,45 @@ impl AnsiParser {
                                         i += 3;
                                         continue;
                                     }
-                                } else if param == 48 && i + 2 < params.len() && params[i + 1] == Some(5) {
+                                } else if param == 38
+                                    && i + 4 < params.len()
+                                    && params[i + 1] == Some(2)
+                                {
+                                    if let (Some(r), Some(g), Some(b)) =
+                                        (params[i + 2], params[i + 3], params[i + 4])
+                                    {
+                                        output.push(TerminalOutput::Sgr(
+                                            SelectGraphicRendition::ForegroundRgb(
+                                                r as u8, g as u8, b as u8,
+                                            ),
+                                        ));
+                                        i += 5;
+                                        continue;
+                                    }
+                                } else if param == 48
+                                    && i + 2 < params.len()
+                                    && params[i + 1] == Some(5)
+                                {
                                     if let Some(color) = params[i + 2] {
                                         output.push(TerminalOutput::Sgr(
                                             SelectGraphicRendition::Background256(color as u8),
                                         ));
                                         i += 3;
+                                        continue;
+                                    }
+                                } else if param == 48
+                                    && i + 4 < params.len()
+                                    && params[i + 1] == Some(2)
+                                {
+                                    if let (Some(r), Some(g), Some(b)) =
+                                        (params[i + 2], params[i + 3], params[i + 4])
+                                    {
+                                        output.push(TerminalOutput::Sgr(
+                                            SelectGraphicRendition::BackgroundRgb(
+                                                r as u8, g as u8, b as u8,
+                                            ),
+                                        ));
+                                        i += 5;
                                         continue;
                                     }
                                 }

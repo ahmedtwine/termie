@@ -290,7 +290,7 @@ impl eframe::App for TermieGui {
 pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([900.0, 650.0])
+            .with_inner_size([1040.0, 720.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };
@@ -319,7 +319,7 @@ pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>
 pub fn run(terminal_emulator: TerminalEmulator<PtyIo>) -> Result<(), Box<dyn std::error::Error>> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([950.0, 670.0])
+            .with_inner_size([1040.0, 720.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };

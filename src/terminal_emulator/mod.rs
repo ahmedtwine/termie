@@ -310,6 +310,7 @@ pub enum TerminalColor {
     Cyan,
     White,
     Indexed256(u8),
+    Rgb(u8, u8, u8),
 }
 
 impl fmt::Display for TerminalColor {
@@ -325,6 +326,7 @@ impl fmt::Display for TerminalColor {
             TerminalColor::Cyan => f.write_str("cyan"),
             TerminalColor::White => f.write_str("white"),
             TerminalColor::Indexed256(idx) => write!(f, "indexed256({})", idx),
+            TerminalColor::Rgb(r, g, b) => write!(f, "rgb({},{},{})", r, g, b),
         }
     }
 }
@@ -336,6 +338,15 @@ impl std::str::FromStr for TerminalColor {
         if let Some(idx_str) = s.strip_prefix("indexed256(").and_then(|s| s.strip_suffix(')')) {
             if let Ok(idx) = idx_str.parse::<u8>() {
                 return Ok(TerminalColor::Indexed256(idx));
+            }
+        }
+
+        if let Some(rgb_str) = s.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
+            let parts: Vec<&str> = rgb_str.split(',').collect();
+            if parts.len() == 3 {
+                if let (Ok(r), Ok(g), Ok(b)) = (parts[0].parse::<u8>(), parts[1].parse::<u8>(), parts[2].parse::<u8>()) {
+                    return Ok(TerminalColor::Rgb(r, g, b));
+                }
             }
         }
 
@@ -367,6 +378,7 @@ impl TerminalColor {
             SelectGraphicRendition::ForegroundCyan => TerminalColor::Cyan,
             SelectGraphicRendition::ForegroundWhite => TerminalColor::White,
             SelectGraphicRendition::Foreground256(idx) => TerminalColor::Indexed256(idx),
+            SelectGraphicRendition::ForegroundRgb(r, g, b) => TerminalColor::Rgb(r, g, b),
             _ => return None,
         };
 
@@ -646,7 +658,7 @@ impl<Io: TermIo> TerminalEmulator<Io> {
                         self.cursor_state.bold = false;
                     } else if sgr == SelectGraphicRendition::Bold {
                         self.cursor_state.bold = true;
-                    } else if matches!(sgr, SelectGraphicRendition::Background256(_)) {
+                    } else if matches!(sgr, SelectGraphicRendition::Background256(_) | SelectGraphicRendition::BackgroundRgb(_, _, _)) {
                         // Background colors not yet implemented, silently ignore
                     } else {
                         warn!("Unhandled sgr: {:?}", sgr);
