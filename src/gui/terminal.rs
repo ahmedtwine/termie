@@ -9,8 +9,8 @@ use eframe::egui::{
 
 use std::borrow::Cow;
 
-const REGULAR_FONT_NAME: &str = "hack";
-const BOLD_FONT_NAME: &str = "hack-bold";
+const REGULAR_FONT_NAME: &str = "firacode-nerd";
+const BOLD_FONT_NAME: &str = "firacode-nerd-bold";
 
 fn write_input_to_terminal<Io: TermIo>(
     input: &InputState,
@@ -178,13 +178,11 @@ fn paint_cursor(
 ) {
     let painter = ui.painter();
 
-    let top = label_rect.top();
-    let left = label_rect.left();
     let y_offset = cursor_pos.y as f32 * character_size.1;
     let x_offset = cursor_pos.x as f32 * character_size.0;
     painter.rect_filled(
         Rect::from_min_size(
-            egui::pos2(left + x_offset, top + y_offset),
+            egui::pos2(label_rect.left() + x_offset, label_rect.top() + y_offset),
             egui::vec2(character_size.0, character_size.1),
         ),
         0.0,
@@ -197,12 +195,12 @@ fn setup_fonts(ctx: &egui::Context) {
 
     fonts.font_data.insert(
         REGULAR_FONT_NAME.to_owned(),
-        FontData::from_static(include_bytes!("../../res/Hack-Regular.ttf")),
+        FontData::from_static(include_bytes!("../../res/FiraCodeNerdFont-Regular.ttf")),
     );
 
     fonts.font_data.insert(
         BOLD_FONT_NAME.to_owned(),
-        FontData::from_static(include_bytes!("../../res/Hack-Bold.ttf")),
+        FontData::from_static(include_bytes!("../../res/FiraCodeNerdFont-Bold.ttf")),
     );
 
     fonts
@@ -308,20 +306,44 @@ fn create_terminal_output_layout_job(
     style: &egui::Style,
     width: f32,
     data: &[u8],
-) -> Result<(LayoutJob, TextFormat), std::str::Utf8Error> {
+) -> (LayoutJob, TextFormat, String) {
     let text_style = &style.text_styles[&TextStyle::Monospace];
-    let data_utf8 = std::str::from_utf8(data)?;
+    let data_utf8 = String::from_utf8_lossy(data).to_string();
     let mut job = egui::text::LayoutJob::simple(
-        data_utf8.to_string(),
+        data_utf8.clone(),
         text_style.clone(),
         style.visuals.text_color(),
         width,
     );
 
-    job.wrap.break_anywhere = true;
+    job.wrap.max_width = f32::INFINITY;
     let textformat = job.sections[0].format.clone();
     job.sections.clear();
-    Ok((job, textformat))
+    (job, textformat, data_utf8)
+}
+
+fn byte_range_to_valid_byte_range(data: &[u8], string: &str, start: usize, end: usize) -> Option<std::ops::Range<usize>> {
+    let end = end.min(data.len());
+    let start = start.min(data.len());
+
+    if start >= end {
+        return None;
+    }
+
+    let prefix = &data[..start];
+    let segment = &data[start..end];
+
+    let prefix_str = String::from_utf8_lossy(prefix);
+    let segment_str = String::from_utf8_lossy(segment);
+
+    let byte_start = prefix_str.len();
+    let byte_end = byte_start + segment_str.len();
+
+    if byte_end > string.len() {
+        return None;
+    }
+
+    Some(byte_start..byte_end)
 }
 
 fn add_terminal_data_to_ui(
@@ -329,9 +351,9 @@ fn add_terminal_data_to_ui(
     data: &[u8],
     format_data: &[FormatTag],
     font_size: f32,
-) -> Result<egui::Response, std::str::Utf8Error> {
-    let (mut job, mut textformat) =
-        create_terminal_output_layout_job(ui.style(), ui.available_width(), data)?;
+) -> egui::Response {
+    let (mut job, mut textformat, data_utf8) =
+        create_terminal_output_layout_job(ui.style(), ui.available_width(), data);
 
     let default_color = textformat.color;
     let terminal_fonts = TerminalFonts::new();
@@ -360,18 +382,26 @@ fn add_terminal_data_to_ui(
             range.end = data.len();
         }
 
+        let valid_range = match byte_range_to_valid_byte_range(data, &data_utf8, range.start, range.end) {
+            Some(r) => r,
+            None => {
+                debug!("Skipping invalid format range");
+                continue;
+            }
+        };
+
         textformat.font_id.family = terminal_fonts.get_family(tag.bold);
         textformat.font_id.size = font_size;
         textformat.color = terminal_color_to_egui(&default_color, &color);
 
         job.sections.push(egui::text::LayoutSection {
             leading_space: 0.0f32,
-            byte_range: range,
+            byte_range: valid_range,
             format: textformat.clone(),
         });
     }
 
-    Ok(ui.label(job))
+    ui.label(job)
 }
 
 struct TerminalOutputRenderResponse {
@@ -406,26 +436,18 @@ fn render_terminal_output<Io: TermIo>(
         .auto_shrink([false, false])
         .stick_to_bottom(true)
         .show(ui, |ui| {
-            let error_logged_rect =
-                |response: Result<egui::Response, std::str::Utf8Error>| match response {
-                    Ok(v) => v.rect,
-                    Err(e) => {
-                        error!("failed to add terminal data to ui: {}", backtraced_err(&e));
-                        Rect::NOTHING
-                    }
-                };
-            let scrollback_area = error_logged_rect(add_terminal_data_to_ui(
+            let scrollback_area = add_terminal_data_to_ui(
                 ui,
                 scrollback_data,
                 &format_data.scrollback,
                 font_size,
-            ));
-            let canvas_area = error_logged_rect(add_terminal_data_to_ui(
+            ).rect;
+            let canvas_area = add_terminal_data_to_ui(
                 ui,
                 canvas_data,
                 &format_data.visible,
                 font_size,
-            ));
+            ).rect;
             TerminalOutputRenderResponse {
                 scrollback_area,
                 canvas_area,
@@ -457,6 +479,7 @@ impl DebugRenderer {
 pub struct TerminalWidget {
     font_size: f32,
     debug_renderer: DebugRenderer,
+    last_keystroke: Option<String>,
 }
 
 impl TerminalWidget {
@@ -466,6 +489,7 @@ impl TerminalWidget {
         TerminalWidget {
             font_size: 14.0,
             debug_renderer: DebugRenderer::new(),
+            last_keystroke: None,
         }
     }
 
@@ -486,10 +510,18 @@ impl TerminalWidget {
             let width_chars = width_chars as f32;
             let height_chars = height_chars as f32;
 
-            ui.set_width((width_chars + 0.5) * character_size.0);
-            ui.set_height((height_chars + 0.5) * character_size.1);
+            ui.set_width(width_chars * character_size.0);
+            ui.set_height(height_chars * character_size.1);
 
             ui.input(|input_state| {
+                for event in &input_state.raw.events {
+                    if let Event::Text(text) = event {
+                        self.last_keystroke = Some(format!("Text: {}", text));
+                    } else if let Event::Key { key, pressed: true, modifiers, .. } = event {
+                        self.last_keystroke = Some(format!("Key: {:?} (ctrl: {}, alt: {}, shift: {})",
+                            key, modifiers.ctrl, modifiers.alt, modifiers.shift));
+                    }
+                }
                 write_input_to_terminal(input_state, terminal_emulator);
             });
 
@@ -500,8 +532,22 @@ impl TerminalWidget {
             self.debug_renderer
                 .render(ui, output_response.scrollback_area, Color32::YELLOW);
 
+            let canvas_start_y = if output_response.scrollback_area.height() > 0.0 {
+                output_response.scrollback_area.bottom()
+            } else {
+                output_response.canvas_area.top()
+            };
+
+            let cursor_base_rect = Rect::from_min_size(
+                egui::pos2(output_response.canvas_area.left(), canvas_start_y),
+                egui::vec2(
+                    terminal_emulator.get_win_size().0 as f32 * character_size.0,
+                    terminal_emulator.get_win_size().1 as f32 * character_size.1,
+                ),
+            );
+
             paint_cursor(
-                output_response.canvas_area,
+                cursor_base_rect,
                 &character_size,
                 &terminal_emulator.cursor_pos(),
                 ui,
@@ -510,6 +556,10 @@ impl TerminalWidget {
 
         self.debug_renderer
             .render(ui, frame_response.response.rect, Color32::RED);
+    }
+
+    pub fn last_keystroke(&self) -> Option<&str> {
+        self.last_keystroke.as_deref()
     }
 
     pub fn show_options(&mut self, ui: &mut Ui) {

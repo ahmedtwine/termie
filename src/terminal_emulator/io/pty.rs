@@ -70,23 +70,21 @@ fn spawn_shell(terminfo_dir: &Path) -> Result<OwnedFd, SpawnShellError> {
         match res.fork_result {
             ForkResult::Parent { .. } => (),
             ForkResult::Child => {
-                let shell_name = CStr::from_bytes_with_nul(b"bash\0")
-                    .expect("Should always have null terminator");
-                let args: &[&[u8]] = &[b"bash\0", b"--noprofile\0", b"--norc\0"];
+                let shell_path = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+                let shell_name = std::ffi::CString::new(shell_path.as_bytes())
+                    .expect("Shell path should be valid");
 
-                let args: Vec<&'static CStr> = args
-                    .iter()
-                    .map(|v| {
-                        CStr::from_bytes_with_nul(v).expect("Should always have null terminator")
-                    })
-                    .collect::<Vec<_>>();
+                let shell_arg = std::ffi::CString::new(shell_path.as_bytes())
+                    .expect("Shell path should be valid");
+                let login_flag = std::ffi::CString::new("-l")
+                    .expect("Should be valid");
 
-                // Temporary workaround to avoid rendering issues
-                std::env::remove_var("PROMPT_COMMAND");
+                let args: Vec<&CStr> = vec![shell_arg.as_c_str(), login_flag.as_c_str()];
+
                 std::env::set_var("TERMINFO", terminfo_dir);
                 std::env::set_var("TERM", "termie");
-                std::env::set_var("PS1", "$ ");
-                nix::unistd::execvp(shell_name, &args).map_err(SpawnShellErrorKind::Exec)?;
+
+                nix::unistd::execvp(shell_name.as_c_str(), &args).map_err(SpawnShellErrorKind::Exec)?;
                 // Should never run
                 std::process::exit(1);
             }

@@ -506,6 +506,10 @@ impl<Io: TermIo> TerminalEmulator<Io> {
         self.terminal_buffer.get_win_size()
     }
 
+    pub fn win_size(&self) -> (usize, usize) {
+        self.get_win_size()
+    }
+
     pub fn set_win_size(
         &mut self,
         width_chars: usize,

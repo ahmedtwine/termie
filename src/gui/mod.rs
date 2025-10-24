@@ -112,10 +112,13 @@ impl eframe::App for ReplayTermieGui {
         }
 
         egui::TopBottomPanel::top("header")
-            .frame(egui::Frame {
-                fill: ctx.style().visuals.panel_fill,
-                ..Default::default()
-            }.inner_margin(8.0))
+            .frame(
+                egui::Frame {
+                    fill: ctx.style().visuals.faint_bg_color,
+                    ..Default::default()
+                }
+                .inner_margin(8.0),
+            )
             .show(ctx, |ui| {
                 if ui.button("next").clicked() {
                     self.step_replay();
@@ -124,10 +127,13 @@ impl eframe::App for ReplayTermieGui {
             });
 
         egui::TopBottomPanel::bottom("seek")
-            .frame(egui::Frame {
-                fill: ctx.style().visuals.panel_fill,
-                ..Default::default()
-            }.inner_margin(8.0))
+            .frame(
+                egui::Frame {
+                    fill: ctx.style().visuals.panel_fill,
+                    ..Default::default()
+                }
+                .inner_margin(8.0),
+            )
             .show(ctx, |ui| {
                 ui.style_mut().spacing.slider_width = ui.available_width();
                 let slider =
@@ -151,6 +157,7 @@ struct TermieGui {
     terminal_emulator: TerminalEmulator<PtyIo>,
     terminal_widget: TerminalWidget,
     recording_handle: Option<RecordingHandle>,
+    show_debug_panel: bool,
 }
 
 impl TermieGui {
@@ -161,12 +168,88 @@ impl TermieGui {
             terminal_emulator,
             terminal_widget: TerminalWidget::new(&cc.egui_ctx),
             recording_handle: None,
+            show_debug_panel: true,
         }
     }
 }
 
 impl eframe::App for TermieGui {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.show_debug_panel {
+            egui::SidePanel::right("debug_panel")
+                .default_width(200.0)
+                .min_width(200.0)
+                .max_width(600.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(20.0);
+
+                            if let Some(last_input) = self.terminal_widget.last_keystroke() {
+                                ui.add_space(10.0);
+                                ui.monospace(
+                                    egui::RichText::new("┌─────────────┐")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(100, 150, 200)),
+                                );
+                                ui.monospace(
+                                    egui::RichText::new("│  Keyboard   │")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(100, 150, 200)),
+                                );
+                                ui.monospace(
+                                    egui::RichText::new("└─────────────┘")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(100, 150, 200)),
+                                );
+
+                                ui.add_space(8.0);
+                                ui.monospace(
+                                    egui::RichText::new("      ↓")
+                                        .size(20.0)
+                                        .color(egui::Color32::from_rgb(150, 200, 150)),
+                                );
+                                ui.add_space(8.0);
+
+                                ui.monospace(
+                                    egui::RichText::new(format!("   [{}]", last_input))
+                                        .size(18.0)
+                                        .color(egui::Color32::from_rgb(255, 200, 100))
+                                        .strong(),
+                                );
+
+                                ui.add_space(8.0);
+                                ui.monospace(
+                                    egui::RichText::new("      ↓")
+                                        .size(20.0)
+                                        .color(egui::Color32::from_rgb(150, 200, 150)),
+                                );
+                                ui.add_space(8.0);
+
+                                ui.monospace(
+                                    egui::RichText::new("┌─────────────┐")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(200, 100, 150)),
+                                );
+                                ui.monospace(
+                                    egui::RichText::new("│     PTY     │")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(200, 100, 150)),
+                                );
+                                ui.monospace(
+                                    egui::RichText::new("└─────────────┘")
+                                        .size(16.0)
+                                        .color(egui::Color32::from_rgb(200, 100, 150)),
+                                );
+                            } else {
+                                ui.add_space(40.0);
+                            }
+                        });
+                    });
+                });
+        }
+
         let panel_response = CentralPanel::default().show(ctx, |ui| {
             let (width_chars, height_chars) = self.terminal_widget.calculate_available_size(ui);
 
@@ -182,6 +265,9 @@ impl eframe::App for TermieGui {
 
         panel_response.response.context_menu(|ui| {
             self.terminal_widget.show_options(ui);
+
+            ui.separator();
+            ui.checkbox(&mut self.show_debug_panel, "Show Debug Panel");
 
             if self.recording_handle.is_some() {
                 if ui.button("Stop recording").clicked() {
@@ -204,7 +290,7 @@ impl eframe::App for TermieGui {
 pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
+            .with_inner_size([900.0, 650.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };
@@ -233,7 +319,7 @@ pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>
 pub fn run(terminal_emulator: TerminalEmulator<PtyIo>) -> Result<(), Box<dyn std::error::Error>> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
+            .with_inner_size([950.0, 670.0])
             .with_min_inner_size([400.0, 300.0]),
         ..Default::default()
     };
