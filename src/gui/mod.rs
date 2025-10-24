@@ -15,8 +15,13 @@ mod terminal;
 
 fn set_egui_options(ctx: &egui::Context) {
     ctx.options_mut(|options| {
-        options.zoom_with_keyboard = false;
+        options.zoom_with_keyboard = true;
     });
+
+    let mut style = (*ctx.style()).clone();
+    style.visuals.window_rounding = 8.0.into();
+    style.visuals.window_shadow.blur = 16.0;
+    ctx.set_style(style);
 }
 
 struct LoadReplayResponse {
@@ -106,20 +111,31 @@ impl eframe::App for ReplayTermieGui {
             }
         }
 
-        egui::TopBottomPanel::top("header").show(ctx, |ui| {
-            if ui.button("next").clicked() {
-                self.step_replay();
-                self.slider_pos += 1;
-            }
-        });
+        egui::TopBottomPanel::top("header")
+            .frame(egui::Frame {
+                fill: ctx.style().visuals.panel_fill,
+                ..Default::default()
+            }.inner_margin(8.0))
+            .show(ctx, |ui| {
+                if ui.button("next").clicked() {
+                    self.step_replay();
+                    self.slider_pos += 1;
+                }
+            });
 
-        egui::TopBottomPanel::bottom("seek").show(ctx, |ui| {
-            ui.style_mut().spacing.slider_width = ui.available_width();
-            let slider = egui::Slider::new(&mut self.slider_pos, 0..=self.replay_control.len() - 1)
-                .show_value(false)
-                .clamp_to_range(true);
-            ui.add(slider);
-        });
+        egui::TopBottomPanel::bottom("seek")
+            .frame(egui::Frame {
+                fill: ctx.style().visuals.panel_fill,
+                ..Default::default()
+            }.inner_margin(8.0))
+            .show(ctx, |ui| {
+                ui.style_mut().spacing.slider_width = ui.available_width();
+                let slider =
+                    egui::Slider::new(&mut self.slider_pos, 0..=self.replay_control.len() - 1)
+                        .show_value(false)
+                        .clamping(egui::SliderClamping::Always);
+                ui.add(slider);
+            });
 
         let panel_response = CentralPanel::default().show(ctx, |ui| {
             self.terminal_widget.show(ui, &mut self.terminal_emulator);
@@ -186,7 +202,12 @@ impl eframe::App for TermieGui {
 }
 
 pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let native_options = eframe::NativeOptions::default();
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_min_inner_size([400.0, 300.0]),
+        ..Default::default()
+    };
 
     let LoadReplayResponse {
         terminal_emulator,
@@ -210,7 +231,12 @@ pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>
 }
 
 pub fn run(terminal_emulator: TerminalEmulator<PtyIo>) -> Result<(), Box<dyn std::error::Error>> {
-    let native_options = eframe::NativeOptions::default();
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_min_inner_size([400.0, 300.0]),
+        ..Default::default()
+    };
     eframe::run_native(
         "Termie",
         native_options,
