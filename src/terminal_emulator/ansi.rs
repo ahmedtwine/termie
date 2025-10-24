@@ -26,6 +26,8 @@ pub enum SelectGraphicRendition {
     ForegroundBrightMagenta,
     ForegroundBrightCyan,
     ForegroundBrightWhite,
+    Foreground256(u8),
+    Background256(u8),
     Unknown(usize),
 }
 
@@ -140,6 +142,8 @@ fn mode_from_params(params: &[u8]) -> Mode {
     match params {
         // https://vt100.net/docs/vt510-rm/DECCKM.html
         b"?1" => Mode::Decckm,
+        // Bracketed paste mode
+        b"?2004" => Mode::BracketedPaste,
         _ => Mode::Unknown(params.to_vec()),
     }
 }
@@ -641,13 +645,35 @@ impl AnsiParser {
                                 params[0] = Some(0);
                             }
 
-                            for param in params {
-                                let Some(param) = param else {
+                            let mut i = 0;
+                            while i < params.len() {
+                                let Some(param) = params[i] else {
+                                    i += 1;
                                     continue;
                                 };
+
+                                if param == 38 && i + 2 < params.len() && params[i + 1] == Some(5) {
+                                    if let Some(color) = params[i + 2] {
+                                        output.push(TerminalOutput::Sgr(
+                                            SelectGraphicRendition::Foreground256(color as u8),
+                                        ));
+                                        i += 3;
+                                        continue;
+                                    }
+                                } else if param == 48 && i + 2 < params.len() && params[i + 1] == Some(5) {
+                                    if let Some(color) = params[i + 2] {
+                                        output.push(TerminalOutput::Sgr(
+                                            SelectGraphicRendition::Background256(color as u8),
+                                        ));
+                                        i += 3;
+                                        continue;
+                                    }
+                                }
+
                                 output.push(TerminalOutput::Sgr(
                                     SelectGraphicRendition::from_usize(param),
                                 ));
+                                i += 1;
                             }
 
                             self.inner = AnsiParserInner::Empty;

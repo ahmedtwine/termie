@@ -227,6 +227,7 @@ pub struct TerminalBufferInsertLineResponse {
 
 pub struct TerminalBufferSetWinSizeResponse {
     pub changed: bool,
+    #[allow(dead_code)]
     pub insertion_range: Range<usize>,
     pub new_cursor_pos: CursorPos,
 }

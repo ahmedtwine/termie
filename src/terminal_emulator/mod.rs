@@ -30,6 +30,8 @@ enum Mode {
     // Cursor keys mode
     // https://vt100.net/docs/vt100-ug/chapter3.html
     Decckm,
+    // Bracketed paste mode - wraps pasted text with special sequences
+    BracketedPaste,
     Unknown(Vec<u8>),
 }
 
@@ -37,6 +39,7 @@ impl fmt::Debug for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Mode::Decckm => f.write_str("Decckm"),
+            Mode::BracketedPaste => f.write_str("BracketedPaste"),
             Mode::Unknown(params) => {
                 let params_s = std::str::from_utf8(params)
                     .expect("parameter parsing should not allow non-utf8 characters here");
@@ -306,23 +309,23 @@ pub enum TerminalColor {
     Magenta,
     Cyan,
     White,
+    Indexed256(u8),
 }
 
 impl fmt::Display for TerminalColor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            TerminalColor::Default => "default",
-            TerminalColor::Black => "black",
-            TerminalColor::Red => "red",
-            TerminalColor::Green => "green",
-            TerminalColor::Yellow => "yellow",
-            TerminalColor::Blue => "blue",
-            TerminalColor::Magenta => "magenta",
-            TerminalColor::Cyan => "cyan",
-            TerminalColor::White => "white",
-        };
-
-        f.write_str(s)
+        match self {
+            TerminalColor::Default => f.write_str("default"),
+            TerminalColor::Black => f.write_str("black"),
+            TerminalColor::Red => f.write_str("red"),
+            TerminalColor::Green => f.write_str("green"),
+            TerminalColor::Yellow => f.write_str("yellow"),
+            TerminalColor::Blue => f.write_str("blue"),
+            TerminalColor::Magenta => f.write_str("magenta"),
+            TerminalColor::Cyan => f.write_str("cyan"),
+            TerminalColor::White => f.write_str("white"),
+            TerminalColor::Indexed256(idx) => write!(f, "indexed256({})", idx),
+        }
     }
 }
 
@@ -330,6 +333,12 @@ impl std::str::FromStr for TerminalColor {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(idx_str) = s.strip_prefix("indexed256(").and_then(|s| s.strip_suffix(')')) {
+            if let Ok(idx) = idx_str.parse::<u8>() {
+                return Ok(TerminalColor::Indexed256(idx));
+            }
+        }
+
         let ret = match s {
             "default" => TerminalColor::Default,
             "black" => TerminalColor::Black,
@@ -357,6 +366,7 @@ impl TerminalColor {
             SelectGraphicRendition::ForegroundMagenta => TerminalColor::Magenta,
             SelectGraphicRendition::ForegroundCyan => TerminalColor::Cyan,
             SelectGraphicRendition::ForegroundWhite => TerminalColor::White,
+            SelectGraphicRendition::Foreground256(idx) => TerminalColor::Indexed256(idx),
             _ => return None,
         };
 
@@ -625,7 +635,6 @@ impl<Io: TermIo> TerminalEmulator<Io> {
                     }
                 }
                 TerminalOutput::Sgr(sgr) => {
-                    // Should this be one big match ???????
                     if let Some(color) = TerminalColor::from_sgr(sgr) {
                         self.cursor_state.color = color;
                     } else if sgr == SelectGraphicRendition::Reset {
@@ -633,6 +642,8 @@ impl<Io: TermIo> TerminalEmulator<Io> {
                         self.cursor_state.bold = false;
                     } else if sgr == SelectGraphicRendition::Bold {
                         self.cursor_state.bold = true;
+                    } else if matches!(sgr, SelectGraphicRendition::Background256(_)) {
+                        // Background colors not yet implemented, silently ignore
                     } else {
                         warn!("Unhandled sgr: {:?}", sgr);
                     }
@@ -641,6 +652,7 @@ impl<Io: TermIo> TerminalEmulator<Io> {
                     Mode::Decckm => {
                         self.decckm_mode = true;
                     }
+                    Mode::BracketedPaste => {}
                     _ => {
                         warn!("unhandled set mode: {mode:?}");
                     }
@@ -656,6 +668,7 @@ impl<Io: TermIo> TerminalEmulator<Io> {
                     Mode::Decckm => {
                         self.decckm_mode = false;
                     }
+                    Mode::BracketedPaste => {}
                     _ => {
                         warn!("unhandled set mode: {mode:?}");
                     }

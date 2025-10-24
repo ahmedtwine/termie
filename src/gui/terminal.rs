@@ -245,6 +245,47 @@ impl TerminalFonts {
     }
 }
 
+fn ansi_256_to_rgb(idx: u8) -> (u8, u8, u8) {
+    match idx {
+        0..=15 => {
+            // Basic 16 colors
+            match idx {
+                0 => (0, 0, 0),
+                1 => (205, 0, 0),
+                2 => (0, 205, 0),
+                3 => (205, 205, 0),
+                4 => (0, 0, 238),
+                5 => (205, 0, 205),
+                6 => (0, 205, 205),
+                7 => (229, 229, 229),
+                8 => (127, 127, 127),
+                9 => (255, 0, 0),
+                10 => (0, 255, 0),
+                11 => (255, 255, 0),
+                12 => (92, 92, 255),
+                13 => (255, 0, 255),
+                14 => (0, 255, 255),
+                15 => (255, 255, 255),
+                _ => unreachable!(),
+            }
+        }
+        16..=231 => {
+            // 216-color cube: 16 + 36 × r + 6 × g + b (r, g, b in 0..6)
+            let idx = idx - 16;
+            let r = idx / 36;
+            let g = (idx % 36) / 6;
+            let b = idx % 6;
+            let to_rgb = |v| if v == 0 { 0 } else { 55 + v * 40 };
+            (to_rgb(r), to_rgb(g), to_rgb(b))
+        }
+        232..=255 => {
+            // Grayscale: 8 + 10 × level (level in 0..24)
+            let gray = 8 + (idx - 232) * 10;
+            (gray, gray, gray)
+        }
+    }
+}
+
 fn terminal_color_to_egui(default_color: &Color32, color: &TerminalColor) -> Color32 {
     match color {
         TerminalColor::Default => *default_color,
@@ -256,6 +297,10 @@ fn terminal_color_to_egui(default_color: &Color32, color: &TerminalColor) -> Col
         TerminalColor::Magenta => Color32::from_rgb(255, 0, 255),
         TerminalColor::Cyan => Color32::from_rgb(0, 255, 255),
         TerminalColor::White => Color32::WHITE,
+        TerminalColor::Indexed256(idx) => {
+            let (r, g, b) = ansi_256_to_rgb(*idx);
+            Color32::from_rgb(r, g, b)
+        }
     }
 }
 
@@ -419,7 +464,7 @@ impl TerminalWidget {
         setup_fonts(ctx);
 
         TerminalWidget {
-            font_size: 12.0,
+            font_size: 14.0,
             debug_renderer: DebugRenderer::new(),
         }
     }
