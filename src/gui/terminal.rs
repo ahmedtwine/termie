@@ -470,7 +470,7 @@ impl TerminalWidget {
     pub fn show_options(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Font size:");
-            ui.add(DragValue::new(&mut self.font_size).clamp_range(1.0..=100.0));
+            ui.add(DragValue::new(&mut self.font_size).range(1.0..=100.0));
         });
         ui.checkbox(&mut self.debug_renderer.enable, "Debug render");
     }

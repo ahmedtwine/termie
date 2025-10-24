@@ -197,12 +197,12 @@ pub fn run_replay(replay_path: PathBuf) -> Result<(), Box<dyn std::error::Error>
         "Termie",
         native_options,
         Box::new(move |cc| {
-            Box::new(ReplayTermieGui::new(
+            Ok(Box::new(ReplayTermieGui::new(
                 cc,
                 replay_path,
                 terminal_emulator,
                 replay_control,
-            ))
+            )))
         }),
     )?;
 
@@ -214,7 +214,7 @@ pub fn run(terminal_emulator: TerminalEmulator<PtyIo>) -> Result<(), Box<dyn std
     eframe::run_native(
         "Termie",
         native_options,
-        Box::new(move |cc| Box::new(TermieGui::new(cc, terminal_emulator))),
+        Box::new(move |cc| Ok(Box::new(TermieGui::new(cc, terminal_emulator)))),
     )?;
     Ok(())
 }
